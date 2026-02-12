@@ -63,7 +63,7 @@ async function main() {
 
   if (!config.dayAi.clientId || !config.dayAi.clientSecret || !config.dayAi.refreshToken) {
     logger.warn('Day.ai credentials not configured. Skipping Day.ai setup.');
-    logger.info('Set DAY_AI_CLIENT_ID, DAY_AI_CLIENT_SECRET, and DAY_AI_REFRESH_TOKEN in .env');
+    logger.info('Run: npm run oauth:setup  (this will auto-populate CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN)');
     logger.info('Then re-run: npm run setup\n');
     printPlaceholderInstructions();
     return;
@@ -164,13 +164,13 @@ async function main() {
 
 function printPlaceholderInstructions(): void {
   logger.info('\n──────────────────────────────────────────');
-  logger.info('Day.ai Setup Instructions (when you have credentials):');
+  logger.info('Day.ai Setup Instructions:');
   logger.info('──────────────────────────────────────────');
-  logger.info('1. Go to day.ai and set up an OAuth integration');
-  logger.info('2. Copy CLIENT_ID, CLIENT_SECRET, and REFRESH_TOKEN to .env');
-  logger.info('3. Run: npm run setup');
-  logger.info('4. This will discover your pipeline/stage IDs and create custom fields');
-  logger.info('5. Then run: npm start (webhook) or npm run poll (polling)');
+  logger.info('1. Run: npm run oauth:setup');
+  logger.info('   (Opens browser for Day.ai authorization, auto-populates credentials in .env)');
+  logger.info('2. Run: npm run setup');
+  logger.info('   (Discovers pipeline/stage IDs and creates custom fields)');
+  logger.info('3. Run: npm start (webhook) or npm run poll (polling)');
   logger.info('──────────────────────────────────────────\n');
 }
 

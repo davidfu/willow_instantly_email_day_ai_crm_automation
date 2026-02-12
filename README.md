@@ -19,6 +19,7 @@ When someone **opens an email** in the Instantly campaign:
 | **Webhook** | `npm start` | Runs an Express server that receives real-time webhook events from Instantly |
 | **Polling** | `npm run poll` | Polls Instantly every N minutes for leads with new email opens |
 | **Setup** | `npm run setup` | Discovers campaign/pipeline/stage IDs and creates custom fields in Day.ai |
+| **OAuth Setup** | `npm run oauth:setup` | One-time Day.ai authorization (auto-populates credentials in .env) |
 
 ## Setup
 
@@ -34,17 +35,20 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` with your credentials:
+Edit `.env`:
+- Set `INSTANTLY_API_KEY` — your Instantly API key
+- Optionally change `INTEGRATION_NAME` (defaults to "Willow Instantly Integration")
+- That's it — Day.ai credentials are auto-populated in the next step.
 
-**Instantly.ai:**
-- `INSTANTLY_API_KEY` — API key from Instantly Dashboard > Settings > Integrations > API
+### 3. Authorize Day.ai (one-time)
 
-**Day.ai:**
-- `DAY_AI_CLIENT_ID` — From Day.ai OAuth app registration
-- `DAY_AI_CLIENT_SECRET` — From Day.ai OAuth app registration
-- `DAY_AI_REFRESH_TOKEN` — Generated during OAuth setup
+```bash
+npm run oauth:setup
+```
 
-### 3. Run setup
+This opens a browser window for Day.ai authorization. Once you approve, `CLIENT_ID`, `CLIENT_SECRET`, and `REFRESH_TOKEN` are **automatically written** to your `.env` file.
+
+### 4. Run setup
 
 ```bash
 npm run setup
@@ -55,7 +59,7 @@ This will:
 - Find the "Sales Pipeline" and "Unqualified Lead" stage in Day.ai
 - Create custom properties in Day.ai for Instantly-specific fields (district, number of students, source, location)
 
-### 4. Start the integration
+### 5. Start the integration
 
 **Webhook mode** (recommended if you have a public URL):
 ```bash
@@ -94,7 +98,9 @@ src/
 ├── setup.ts                  # One-time setup script
 ├── config.ts                 # Environment configuration
 ├── instantly/client.ts       # Instantly API v2 client
-├── day/client.ts             # Day.ai MCP/OAuth client
+├── day/
+│   ├── client.ts             # Day.ai MCP/OAuth client
+│   └── oauth-setup.ts        # Interactive OAuth setup wizard
 ├── sync/
 │   ├── engine.ts             # Core orchestration logic
 │   └── field-mapping.ts      # Instantly → Day.ai field mapping

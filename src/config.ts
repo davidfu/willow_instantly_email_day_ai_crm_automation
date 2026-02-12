@@ -9,11 +9,12 @@ export const config = {
     sendingEmail: process.env.INSTANTLY_SENDING_EMAIL || 'fu@streetlightschools.org',
   },
   dayAi: {
-    clientId: process.env.DAY_AI_CLIENT_ID || '',
-    clientSecret: process.env.DAY_AI_CLIENT_SECRET || '',
-    refreshToken: process.env.DAY_AI_REFRESH_TOKEN || '',
+    integrationName: process.env.INTEGRATION_NAME || 'Willow Instantly Integration',
+    clientId: process.env.CLIENT_ID || '',
+    clientSecret: process.env.CLIENT_SECRET || '',
+    refreshToken: process.env.REFRESH_TOKEN || '',
     baseUrl: process.env.DAY_AI_BASE_URL || 'https://day.ai',
-    workspaceId: process.env.DAY_AI_WORKSPACE_ID || '',
+    workspaceId: process.env.WORKSPACE_ID || '',
     pipelineName: process.env.DAY_AI_PIPELINE_NAME || 'Sales Pipeline',
     stageName: process.env.DAY_AI_STAGE_NAME || 'Unqualified Lead',
   },
@@ -26,21 +27,25 @@ export const config = {
   },
 };
 
-export function validateConfig(mode: 'webhook' | 'poll' | 'setup'): void {
+export function validateConfig(mode: 'webhook' | 'poll' | 'setup' | 'oauth'): void {
   const missing: string[] = [];
 
-  if (!config.instantly.apiKey) missing.push('INSTANTLY_API_KEY');
+  if (mode !== 'oauth') {
+    if (!config.instantly.apiKey) missing.push('INSTANTLY_API_KEY');
+  }
 
-  if (mode !== 'setup') {
-    if (!config.dayAi.clientId) missing.push('DAY_AI_CLIENT_ID');
-    if (!config.dayAi.clientSecret) missing.push('DAY_AI_CLIENT_SECRET');
-    if (!config.dayAi.refreshToken) missing.push('DAY_AI_REFRESH_TOKEN');
+  if (mode === 'webhook' || mode === 'poll') {
+    if (!config.dayAi.clientId) missing.push('CLIENT_ID');
+    if (!config.dayAi.clientSecret) missing.push('CLIENT_SECRET');
+    if (!config.dayAi.refreshToken) missing.push('REFRESH_TOKEN');
   }
 
   if (missing.length > 0) {
+    const hint = missing.includes('CLIENT_ID')
+      ? 'Run "npm run oauth:setup" to auto-populate Day.ai credentials.'
+      : 'Copy .env.example to .env and fill in the values.';
     throw new Error(
-      `Missing required environment variables: ${missing.join(', ')}\n` +
-      'Copy .env.example to .env and fill in the values.'
+      `Missing required environment variables: ${missing.join(', ')}\n${hint}`
     );
   }
 }
