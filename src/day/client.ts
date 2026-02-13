@@ -196,6 +196,47 @@ export class DayAiClient {
     }
   }
 
+  /**
+   * Extract an array of objects from a search_objects response.
+   * Handles various response shapes from Day.ai MCP:
+   *   - { objectType: [...] }
+   *   - { results: [...] }
+   *   - { results: { objectType: [...] } }
+   *   - [...] (direct array)
+   */
+  private extractSearchResults(parsed: unknown, objectType: string): unknown[] {
+    if (!parsed) return [];
+    if (Array.isArray(parsed)) return parsed;
+
+    const obj = parsed as Record<string, unknown>;
+
+    // Try direct key: { native_pipeline: [...] }
+    if (Array.isArray(obj[objectType])) return obj[objectType] as unknown[];
+
+    // Try results wrapper: { results: [...] }
+    if (Array.isArray(obj.results)) return obj.results as unknown[];
+
+    // Try results.objectType: { results: { native_pipeline: [...] } }
+    if (obj.results && typeof obj.results === 'object') {
+      const inner = obj.results as Record<string, unknown>;
+      if (Array.isArray(inner[objectType])) return inner[objectType] as unknown[];
+    }
+
+    // Try items wrapper: { items: [...] }
+    if (Array.isArray(obj.items)) return obj.items as unknown[];
+
+    // Try data wrapper: { data: [...] }
+    if (Array.isArray(obj.data)) return obj.data as unknown[];
+
+    // Last resort: look for any array value in the object
+    for (const val of Object.values(obj)) {
+      if (Array.isArray(val) && val.length > 0) return val;
+    }
+
+    logger.debug(`Could not extract array for ${objectType} from response`, parsed);
+    return [];
+  }
+
   // ─── Contact Operations ───────────────────────────────────────────
 
   async searchContactByEmail(email: string): Promise<DayContact | null> {
@@ -213,9 +254,9 @@ export class DayAiClient {
       includeRelationships: true,
     });
 
-    const parsed = this.parseResult(result) as Record<string, unknown>;
-    const contacts = parsed?.native_contact as unknown[];
-    if (!contacts || contacts.length === 0) return null;
+    const parsed = this.parseResult(result);
+    const contacts = this.extractSearchResults(parsed, 'native_contact');
+    if (contacts.length === 0) return null;
     return contacts[0] as DayContact;
   }
 
@@ -249,8 +290,9 @@ export class DayAiClient {
       propertiesToReturn: '*',
     });
 
-    const parsed = this.parseResult(result) as Record<string, unknown>;
-    const pipelines = (parsed?.native_pipeline || []) as DayPipeline[];
+    const parsed = this.parseResult(result);
+    const pipelines = this.extractSearchResults(parsed, 'native_pipeline') as DayPipeline[];
+    logger.debug(`Found ${pipelines.length} pipelines`, pipelines.map(p => ({ id: p.id, title: p.title })));
     return pipelines.find(
       (p) => p.title?.toLowerCase() === name.toLowerCase()
     ) || null;
@@ -270,8 +312,9 @@ export class DayAiClient {
       propertiesToReturn: '*',
     });
 
-    const parsed = this.parseResult(result) as Record<string, unknown>;
-    const stages = (parsed?.native_stage || []) as DayStage[];
+    const parsed = this.parseResult(result);
+    const stages = this.extractSearchResults(parsed, 'native_stage') as DayStage[];
+    logger.debug(`Found ${stages.length} stages`, stages.map(s => ({ id: s.id, title: s.title })));
     return stages.find(
       (s) => s.title?.toLowerCase() === stageName.toLowerCase()
     ) || null;
@@ -294,8 +337,8 @@ export class DayAiClient {
       includeRelationships: true,
     });
 
-    const parsed = this.parseResult(result) as Record<string, unknown>;
-    return (parsed?.native_opportunity || []) as DayOpportunity[];
+    const parsed = this.parseResult(result);
+    return this.extractSearchResults(parsed, 'native_opportunity') as DayOpportunity[];
   }
 
   async createOpportunity(params: {
