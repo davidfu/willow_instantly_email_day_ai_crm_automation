@@ -64,31 +64,44 @@ export class SyncEngine {
       return;
     }
 
-    // Find the Sales Pipeline
+    // Try to discover pipeline dynamically
     logger.info(`Looking up pipeline: "${config.dayAi.pipelineName}"`);
-    const pipeline = await this.dayAi.findPipelineByName(config.dayAi.pipelineName);
-    if (!pipeline) {
-      throw new Error(
-        `Pipeline "${config.dayAi.pipelineName}" not found in Day.ai. ` +
-        'Please create it first or update DAY_AI_PIPELINE_NAME in .env'
-      );
-    }
-    this.pipelineId = pipeline.id;
-    this.store.pipelineId = pipeline.id;
-    logger.info(`Found pipeline: ${pipeline.title} (${pipeline.id})`);
+    try {
+      const pipeline = await this.dayAi.findPipelineByName(config.dayAi.pipelineName);
+      if (pipeline) {
+        this.pipelineId = pipeline.id;
+        this.store.pipelineId = pipeline.id;
+        logger.info(`Found pipeline: ${pipeline.title} (${pipeline.id})`);
 
-    // Find the Unqualified Lead stage
-    logger.info(`Looking up stage: "${config.dayAi.stageName}"`);
-    const stage = await this.dayAi.findStageByName(pipeline.id, config.dayAi.stageName);
-    if (!stage) {
+        const stage = await this.dayAi.findStageByName(pipeline.id, config.dayAi.stageName);
+        if (stage) {
+          this.stageId = stage.id;
+          this.store.stageId = stage.id;
+          logger.info(`Found stage: ${stage.title} (${stage.id})`);
+          return;
+        }
+      }
+    } catch (err) {
+      logger.warn('Dynamic pipeline/stage discovery failed, using hardcoded fallbacks', err);
+    }
+
+    // Fallback to hardcoded IDs from config
+    if (!this.pipelineId && config.dayAi.pipelineId) {
+      this.pipelineId = config.dayAi.pipelineId;
+      this.store.pipelineId = config.dayAi.pipelineId;
+      logger.info(`Using hardcoded pipeline ID: ${this.pipelineId}`);
+    }
+    if (!this.stageId && config.dayAi.stageId) {
+      this.stageId = config.dayAi.stageId;
+      this.store.stageId = config.dayAi.stageId;
+      logger.info(`Using hardcoded stage ID: ${this.stageId}`);
+    }
+
+    if (!this.pipelineId || !this.stageId) {
       throw new Error(
-        `Stage "${config.dayAi.stageName}" not found in pipeline "${pipeline.title}". ` +
-        'Please create it first or update DAY_AI_STAGE_NAME in .env'
+        'Could not resolve pipeline/stage. Set DAY_AI_PIPELINE_ID and DAY_AI_STAGE_ID in .env'
       );
     }
-    this.stageId = stage.id;
-    this.store.stageId = stage.id;
-    logger.info(`Found stage: ${stage.title} (${stage.id})`);
   }
 
   /**
@@ -159,7 +172,8 @@ export class SyncEngine {
       domain,
       primaryPerson: lead.email,
       description,
-      customProperties: customProps.length > 0 ? customProps : undefined,
+      organizationName: lead.company_name || (lead.custom_variables?.district as string) || '',
+      currentStatus: 'New lead — opened email in Instantly campaign',
     });
 
     logger.info(`Created deal: "${title}" in Unqualified Lead stage`);

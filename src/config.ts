@@ -16,7 +16,9 @@ export const config = {
     baseUrl: process.env.DAY_AI_BASE_URL || 'https://day.ai',
     workspaceId: process.env.WORKSPACE_ID || '',
     pipelineName: process.env.DAY_AI_PIPELINE_NAME || 'Sales Pipeline',
+    pipelineId: process.env.DAY_AI_PIPELINE_ID || '67279be2-3e48-45b1-abfa-ae94a6fe198c',
     stageName: process.env.DAY_AI_STAGE_NAME || 'Unqualified Lead',
+    stageId: process.env.DAY_AI_STAGE_ID || 'fad7fcba-2b28-4bcd-979e-435779818487',
   },
   server: {
     port: parseInt(process.env.PORT || '3000', 10),

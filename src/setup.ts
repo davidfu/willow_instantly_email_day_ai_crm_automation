@@ -80,28 +80,35 @@ async function main() {
     return;
   }
 
-  // Find pipeline
+  // Find pipeline — try dynamic discovery, fall back to hardcoded IDs
   try {
     const pipeline = await dayAi.findPipelineByName(config.dayAi.pipelineName);
     if (pipeline) {
       store.pipelineId = pipeline.id;
       logger.info(`Found pipeline: "${pipeline.title}" (${pipeline.id})`);
 
-      // Find stage
       const stage = await dayAi.findStageByName(pipeline.id, config.dayAi.stageName);
       if (stage) {
         store.stageId = stage.id;
         logger.info(`Found stage: "${stage.title}" (${stage.id})`);
       } else {
-        logger.warn(`Stage "${config.dayAi.stageName}" not found in pipeline.`);
-        logger.info('You may need to create this stage or update DAY_AI_STAGE_NAME in .env');
+        logger.warn(`Stage "${config.dayAi.stageName}" not found dynamically.`);
       }
     } else {
-      logger.warn(`Pipeline "${config.dayAi.pipelineName}" not found.`);
-      logger.info('You may need to create this pipeline or update DAY_AI_PIPELINE_NAME in .env');
+      logger.warn(`Pipeline "${config.dayAi.pipelineName}" not found dynamically.`);
     }
   } catch (err) {
-    logger.error('Failed to discover pipeline/stage', err);
+    logger.warn('Dynamic pipeline/stage discovery failed', err);
+  }
+
+  // Fallback to hardcoded IDs
+  if (!store.pipelineId && config.dayAi.pipelineId) {
+    store.pipelineId = config.dayAi.pipelineId;
+    logger.info(`Using hardcoded pipeline ID: ${store.pipelineId}`);
+  }
+  if (!store.stageId && config.dayAi.stageId) {
+    store.stageId = config.dayAi.stageId;
+    logger.info(`Using hardcoded stage ID: ${store.stageId}`);
   }
 
   // ─── Step 3: Create custom properties ─────────────────────────────

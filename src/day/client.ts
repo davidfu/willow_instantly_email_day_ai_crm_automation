@@ -198,11 +198,7 @@ export class DayAiClient {
 
   /**
    * Extract an array of objects from a search_objects response.
-   * Handles various response shapes from Day.ai MCP:
-   *   - { objectType: [...] }
-   *   - { results: [...] }
-   *   - { results: { objectType: [...] } }
-   *   - [...] (direct array)
+   * Day.ai MCP returns: { native_type: { results: [...], totalCount: N }, hasMore, nextOffset }
    */
   private extractSearchResults(parsed: unknown, objectType: string): unknown[] {
     if (!parsed) return [];
@@ -210,30 +206,34 @@ export class DayAiClient {
 
     const obj = parsed as Record<string, unknown>;
 
-    // Try direct key: { native_pipeline: [...] }
-    if (Array.isArray(obj[objectType])) return obj[objectType] as unknown[];
-
-    // Try results wrapper: { results: [...] }
-    if (Array.isArray(obj.results)) return obj.results as unknown[];
-
-    // Try results.objectType: { results: { native_pipeline: [...] } }
-    if (obj.results && typeof obj.results === 'object') {
-      const inner = obj.results as Record<string, unknown>;
-      if (Array.isArray(inner[objectType])) return inner[objectType] as unknown[];
+    // Primary format: { native_pipeline: { results: [...] } }
+    if (obj[objectType] && typeof obj[objectType] === 'object') {
+      const typed = obj[objectType] as Record<string, unknown>;
+      if (Array.isArray(typed.results)) return typed.results;
+      // If the value itself is an array
+      if (Array.isArray(obj[objectType])) return obj[objectType] as unknown[];
     }
 
-    // Try items wrapper: { items: [...] }
-    if (Array.isArray(obj.items)) return obj.items as unknown[];
+    // Fallback: top-level results array
+    if (Array.isArray(obj.results)) return obj.results;
 
-    // Try data wrapper: { data: [...] }
-    if (Array.isArray(obj.data)) return obj.data as unknown[];
+    // Fallback: look for any nested { results: [...] } in any key
+    for (const [key, val] of Object.entries(obj)) {
+      if (val && typeof val === 'object' && !Array.isArray(val)) {
+        const inner = val as Record<string, unknown>;
+        if (Array.isArray(inner.results) && inner.results.length > 0) {
+          logger.debug(`Found results under key "${key}" instead of "${objectType}"`);
+          return inner.results;
+        }
+      }
+    }
 
-    // Last resort: look for any array value in the object
+    // Last resort: look for any array value
     for (const val of Object.values(obj)) {
       if (Array.isArray(val) && val.length > 0) return val;
     }
 
-    logger.debug(`Could not extract array for ${objectType} from response`, parsed);
+    logger.debug(`Could not extract array for ${objectType} from response`, JSON.stringify(parsed).substring(0, 500));
     return [];
   }
 
@@ -262,8 +262,7 @@ export class DayAiClient {
 
   async createContact(properties: Record<string, unknown>): Promise<unknown> {
     const result = await this.mcpCallTool('create_or_update_person_organization', {
-      isCreating: true,
-      objectType: 'Person',
+      objectType: 'native_contact',
       standardProperties: properties,
     });
     return this.parseResult(result);
@@ -271,10 +270,8 @@ export class DayAiClient {
 
   async updateContact(email: string, properties: Record<string, unknown>): Promise<unknown> {
     const result = await this.mcpCallTool('create_or_update_person_organization', {
-      isCreating: false,
-      objectId: email,
-      objectType: 'Person',
-      standardProperties: properties,
+      objectType: 'native_contact',
+      standardProperties: { ...properties, email },
     });
     return this.parseResult(result);
   }
@@ -347,20 +344,23 @@ export class DayAiClient {
     domain?: string;
     primaryPerson: string;
     description?: string;
+    organizationName?: string;
+    currentStatus?: string;
     customProperties?: Array<{ propertyId: string; value: unknown }>;
   }): Promise<unknown> {
     const result = await this.mcpCallTool('create_or_update_opportunity', {
-      title: params.title,
-      stageId: params.stageId,
-      domain: params.domain || '',
-      primaryPerson: params.primaryPerson,
-      description: params.description,
+      standardProperties: {
+        title: params.title,
+        stageId: params.stageId,
+        domain: params.domain || '',
+        description: params.description,
+        organizationName: params.organizationName,
+        currentStatus: params.currentStatus || 'New lead from Instantly.ai email campaign',
+      },
       roles: [{
         personEmail: params.primaryPerson,
         roles: ['PRIMARY_CONTACT'],
-        reasoning: 'Lead from Instantly.ai email campaign',
       }],
-      customProperties: params.customProperties,
     });
     return this.parseResult(result);
   }
@@ -371,7 +371,7 @@ export class DayAiClient {
   ): Promise<unknown> {
     const result = await this.mcpCallTool('create_or_update_opportunity', {
       objectId: opportunityId,
-      ...updates,
+      standardProperties: updates,
     });
     return this.parseResult(result);
   }
