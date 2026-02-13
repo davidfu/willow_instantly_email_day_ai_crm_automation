@@ -240,24 +240,24 @@ export class DayAiClient {
   // ─── Contact Operations ───────────────────────────────────────────
 
   async searchContactByEmail(email: string): Promise<DayContact | null> {
-    const result = await this.mcpCallTool('search_objects', {
-      description: `Find contact by email: ${email}`,
-      queries: [{
+    // Use keyword_search which is more reliable for email lookups
+    const result = await this.mcpCallTool('keyword_search', {
+      searchOperations: [{
         objectType: 'native_contact',
-        where: {
-          propertyId: 'email',
-          operator: 'eq',
-          value: email,
-        },
+        keywords: [email],
+        limit: 5,
+        searchIntent: 'find_specific',
       }],
-      propertiesToReturn: '*',
-      includeRelationships: true,
     });
 
     const parsed = this.parseResult(result);
     const contacts = this.extractSearchResults(parsed, 'native_contact');
-    if (contacts.length === 0) return null;
-    return contacts[0] as DayContact;
+    // Filter to exact email match
+    const match = contacts.find((c: unknown) => {
+      const contact = c as Record<string, unknown>;
+      return contact.email === email || contact.objectId === email;
+    });
+    return (match as DayContact) || null;
   }
 
   async createContact(properties: Record<string, unknown>): Promise<unknown> {
@@ -320,18 +320,14 @@ export class DayAiClient {
   // ─── Opportunity (Deal) Operations ────────────────────────────────
 
   async searchOpportunitiesByContact(email: string): Promise<DayOpportunity[]> {
-    const result = await this.mcpCallTool('search_objects', {
-      description: `Find deals involving ${email}`,
-      queries: [{
+    // Use keyword_search to find opportunities linked to this contact
+    const result = await this.mcpCallTool('keyword_search', {
+      searchOperations: [{
         objectType: 'native_opportunity',
-        where: {
-          relationship: 'attendee',
-          targetObjectType: 'native_contact',
-          targetObjectId: email,
-        },
+        keywords: [email],
+        limit: 10,
+        searchIntent: 'find_specific',
       }],
-      propertiesToReturn: '*',
-      includeRelationships: true,
     });
 
     const parsed = this.parseResult(result);
