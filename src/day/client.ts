@@ -60,7 +60,6 @@ export class DayAiClient {
   private refreshToken: string;
   private accessToken: string | null = null;
   private tokenExpiresAt: number = 0;
-  private mcpSessionId: string | null = null;
   private jsonRpcId: number = 0;
 
   constructor() {
@@ -198,7 +197,7 @@ export class DayAiClient {
 
   /**
    * Extract an array of objects from a search_objects response.
-   * Day.ai MCP returns: { native_type: { results: [...], totalCount: N }, hasMore, nextOffset }
+   * Day.ai returns: { native_type: { results: [...], totalCount: N }, hasMore, nextOffset }
    */
   private extractSearchResults(parsed: unknown, objectType: string): unknown[] {
     if (!parsed) return [];
@@ -210,7 +209,6 @@ export class DayAiClient {
     if (obj[objectType] && typeof obj[objectType] === 'object') {
       const typed = obj[objectType] as Record<string, unknown>;
       if (Array.isArray(typed.results)) return typed.results;
-      // If the value itself is an array
       if (Array.isArray(obj[objectType])) return obj[objectType] as unknown[];
     }
 
@@ -239,25 +237,26 @@ export class DayAiClient {
 
   // ─── Contact Operations ───────────────────────────────────────────
 
+  /**
+   * Search for a contact by email using search_objects.
+   * Only passes: queries (with objectType + where). No extra params.
+   */
   async searchContactByEmail(email: string): Promise<DayContact | null> {
-    // Use keyword_search which is more reliable for email lookups
-    const result = await this.mcpCallTool('keyword_search', {
-      searchOperations: [{
+    const result = await this.mcpCallTool('search_objects', {
+      queries: [{
         objectType: 'native_contact',
-        keywords: [email],
-        limit: 5,
-        searchIntent: 'find_specific',
+        where: {
+          propertyId: 'email',
+          operator: 'eq',
+          value: email,
+        },
       }],
     });
 
     const parsed = this.parseResult(result);
     const contacts = this.extractSearchResults(parsed, 'native_contact');
-    // Filter to exact email match
-    const match = contacts.find((c: unknown) => {
-      const contact = c as Record<string, unknown>;
-      return contact.email === email || contact.objectId === email;
-    });
-    return (match as DayContact) || null;
+    if (contacts.length === 0) return null;
+    return contacts[0] as DayContact;
   }
 
   async createContact(properties: Record<string, unknown>): Promise<unknown> {
@@ -278,13 +277,15 @@ export class DayAiClient {
 
   // ─── Pipeline Operations ──────────────────────────────────────────
 
+  /**
+   * Find all pipelines and match by name.
+   * Only passes: queries (with objectType). No description/propertiesToReturn.
+   */
   async findPipelineByName(name: string): Promise<DayPipeline | null> {
     const result = await this.mcpCallTool('search_objects', {
-      description: `Find pipeline: ${name}`,
       queries: [{
         objectType: 'native_pipeline',
       }],
-      propertiesToReturn: '*',
     });
 
     const parsed = this.parseResult(result);
@@ -295,9 +296,12 @@ export class DayAiClient {
     ) || null;
   }
 
+  /**
+   * Find stages for a pipeline and match by name.
+   * Uses where clause with propertyId/operator/value format (from SDK tests).
+   */
   async findStageByName(pipelineId: string, stageName: string): Promise<DayStage | null> {
     const result = await this.mcpCallTool('search_objects', {
-      description: `Find stage '${stageName}' in pipeline`,
       queries: [{
         objectType: 'native_stage',
         where: {
@@ -306,7 +310,6 @@ export class DayAiClient {
           value: pipelineId,
         },
       }],
-      propertiesToReturn: '*',
     });
 
     const parsed = this.parseResult(result);
@@ -319,19 +322,36 @@ export class DayAiClient {
 
   // ─── Opportunity (Deal) Operations ────────────────────────────────
 
+  /**
+   * Search for opportunities. Fetches all and filters client-side
+   * since relationship-based where isn't supported.
+   */
   async searchOpportunitiesByContact(email: string): Promise<DayOpportunity[]> {
-    // Use keyword_search to find opportunities linked to this contact
-    const result = await this.mcpCallTool('keyword_search', {
-      searchOperations: [{
+    const result = await this.mcpCallTool('search_objects', {
+      queries: [{
         objectType: 'native_opportunity',
-        keywords: [email],
-        limit: 10,
-        searchIntent: 'find_specific',
       }],
     });
 
     const parsed = this.parseResult(result);
-    return this.extractSearchResults(parsed, 'native_opportunity') as DayOpportunity[];
+    const allOpps = this.extractSearchResults(parsed, 'native_opportunity') as DayOpportunity[];
+
+    // Filter client-side: match by primaryPerson, roles, or title containing the email
+    return allOpps.filter((opp) => {
+      const primaryPerson = (opp as Record<string, unknown>).primaryPerson;
+      if (primaryPerson === email) return true;
+
+      // Check roles array for matching personEmail
+      const roles = (opp as Record<string, unknown>).roles as Array<{ personEmail?: string }> | undefined;
+      if (roles?.some(r => r.personEmail === email)) return true;
+
+      // Check if the email domain matches the deal domain
+      const domain = (opp as Record<string, unknown>).domain as string | undefined;
+      const emailDomain = email.split('@')[1];
+      if (domain && emailDomain && domain === emailDomain) return true;
+
+      return false;
+    });
   }
 
   async createOpportunity(params: {
@@ -342,7 +362,6 @@ export class DayAiClient {
     description?: string;
     organizationName?: string;
     currentStatus?: string;
-    customProperties?: Array<{ propertyId: string; value: unknown }>;
   }): Promise<unknown> {
     const result = await this.mcpCallTool('create_or_update_opportunity', {
       standardProperties: {
