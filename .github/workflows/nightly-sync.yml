@@ -1,0 +1,54 @@
+name: Nightly Instantly → Day.ai Sync
+
+on:
+  # Run every day at 7:00 UTC (2:00 AM EST / 11:00 PM PST)
+  schedule:
+    - cron: '0 7 * * *'
+
+  # Allow manual trigger from GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Need write access to commit state file back
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Run sync
+        env:
+          INSTANTLY_API_KEY: ${{ secrets.INSTANTLY_API_KEY }}
+          INSTANTLY_CAMPAIGN_NAME: ${{ secrets.INSTANTLY_CAMPAIGN_NAME }}
+          INSTANTLY_SENDING_EMAIL: ${{ secrets.INSTANTLY_SENDING_EMAIL }}
+          INTEGRATION_NAME: ${{ secrets.INTEGRATION_NAME }}
+          CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+          DAY_AI_PIPELINE_ID: ${{ secrets.DAY_AI_PIPELINE_ID }}
+          DAY_AI_STAGE_ID: ${{ secrets.DAY_AI_STAGE_ID }}
+        run: node dist/cron.js
+
+      - name: Commit updated state file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/processed-leads.json
+          git diff --cached --quiet || git commit -m "chore: update processed leads state [skip ci]"
+          git push

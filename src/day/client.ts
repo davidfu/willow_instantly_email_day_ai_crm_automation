@@ -94,6 +94,15 @@ export class DayAiClient {
 
     if (!res.ok) {
       const text = await res.text();
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(
+          `Day.ai authorization expired (${res.status}). ` +
+          `Your refresh token is no longer valid.\n` +
+          `To fix: run "npm run oauth:setup" locally to re-authorize, ` +
+          `then update the REFRESH_TOKEN in your GitHub repo secrets.\n` +
+          `Response: ${text}`
+        );
+      }
       throw new Error(`Day.ai token refresh failed (${res.status}): ${text}`);
     }
 
