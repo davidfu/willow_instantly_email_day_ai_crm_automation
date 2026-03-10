@@ -1,4 +1,3 @@
-import fetch from 'node-fetch';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
@@ -371,11 +370,11 @@ export class DayAiClient {
         description: params.description,
         organizationName: params.organizationName,
         currentStatus: params.currentStatus || 'New lead from Instantly.ai email campaign',
+        roles: [{
+          personEmail: params.primaryPerson,
+          roles: ['PRIMARY_CONTACT'],
+        }],
       },
-      roles: [{
-        personEmail: params.primaryPerson,
-        roles: ['PRIMARY_CONTACT'],
-      }],
     });
     return this.parseResult(result);
   }
@@ -402,7 +401,7 @@ export class DayAiClient {
     const args: Record<string, unknown> = {
       title: params.title,
       assignedToAssistant: false,
-      type: 'FOLLOW_UP',
+      type: 'FOLLOWUP',
       status: 'UNREAD',
       priority: 'HIGH',
       people: [params.contactEmail],
@@ -449,7 +448,7 @@ export class DayAiClient {
     name: string;
     description: string;
   }): Promise<unknown> {
-    const result = await this.mcpCallTool('create_custom_property', {
+    const result = await this.mcpCallTool('create_or_update_custom_property', {
       objectTypeId: params.objectTypeId,
       propertyTypeId: params.propertyTypeId,
       name: params.name,
@@ -465,7 +464,6 @@ export class DayAiClient {
   async readSchema(objectType: string): Promise<unknown> {
     const result = await this.mcpCallTool('read_crm_schema', {
       objectType,
-      includeOptions: true,
     });
     return this.parseResult(result);
   }

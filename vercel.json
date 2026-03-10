@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/webhook/instantly.ts": {
+      "maxDuration": 30
+    }
+  }
+}
