@@ -1,0 +1,30 @@
+{
+  "name": "willow-instantly-day-ai-integration",
+  "version": "1.0.0",
+  "description": "Automation to push email engagement data from Instantly.ai to Day.ai CRM for Willow Education",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "poll": "ts-node src/poll.ts",
+    "sync": "ts-node src/cron.ts",
+    "sync:built": "node dist/cron.js",
+    "setup": "ts-node src/setup.ts",
+    "oauth:setup": "ts-node src/day/oauth-setup.ts",
+    "dev:watch": "ts-node-dev --respawn src/index.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "@types/node-fetch": "^2.6.9",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.3.2"
+  }
+}
