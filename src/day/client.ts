@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import fetch from 'node-fetch';
 import { config } from '../config';
 import { logger } from '../utils/logger';
@@ -110,12 +112,37 @@ export class DayAiClient {
     this.accessToken = data.access_token;
     this.tokenExpiresAt = now + data.expires_in * 1000;
 
-    if (data.refresh_token) {
+    if (data.refresh_token && data.refresh_token !== this.refreshToken) {
+      logger.info('Day.ai rotated refresh token — persisting new token to .env');
       this.refreshToken = data.refresh_token;
+      this.persistRefreshToken(data.refresh_token);
     }
 
     logger.info('Day.ai access token refreshed successfully');
     return this.accessToken;
+  }
+
+  /**
+   * Persist a rotated refresh token back to .env so it survives restarts.
+   */
+  private persistRefreshToken(newToken: string): void {
+    try {
+      const envPath = path.join(process.cwd(), '.env');
+      if (!fs.existsSync(envPath)) return;
+
+      let content = fs.readFileSync(envPath, 'utf-8');
+      const regex = /^REFRESH_TOKEN=.*$/m;
+      if (content.match(regex)) {
+        content = content.replace(regex, `REFRESH_TOKEN=${newToken}`);
+      } else {
+        content += `\nREFRESH_TOKEN=${newToken}`;
+      }
+      fs.writeFileSync(envPath, content);
+      logger.info('Updated REFRESH_TOKEN in .env');
+    } catch (err) {
+      // Non-fatal: token is still in memory for this run
+      logger.warn('Could not persist rotated refresh token to .env', err);
+    }
   }
 
   // ─── MCP Transport ────────────────────────────────────────────────

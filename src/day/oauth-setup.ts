@@ -10,12 +10,11 @@ import { logger } from '../utils/logger';
 /**
  * Interactive OAuth setup wizard for Day.ai.
  *
- * Mirrors the flow from the Day.ai SDK:
- * 1. Registers an OAuth client with Day.ai (gets CLIENT_ID + CLIENT_SECRET)
- * 2. Prints an authorization URL to open in your browser
- * 3. Starts a local callback server to receive the auth code
- * 4. Exchanges the auth code for tokens (REFRESH_TOKEN)
- * 5. Writes all three into your .env file automatically
+ * Key behavior:
+ * - If CLIENT_ID + CLIENT_SECRET already exist in .env, REUSE them (no re-registration).
+ * - If REFRESH_TOKEN also exists, validate it. If valid, skip everything.
+ * - Only registers a new OAuth client on first run (or if credentials are wiped).
+ * - Only opens the browser auth flow if no valid refresh token exists.
  *
  * Run: npm run oauth:setup
  */
@@ -59,10 +58,37 @@ class OAuthSetup {
       process.exit(1);
     }
 
-    // Step 1: Register OAuth client
-    logger.info(`Registering OAuth client: "${this.integrationName}"...`);
-    const clientData = await this.registerClient();
-    logger.info(`Client registered. CLIENT_ID: ${clientData.client_id.substring(0, 8)}...`);
+    // Check if we already have valid credentials
+    const existingClientId = process.env.CLIENT_ID || '';
+    const existingClientSecret = process.env.CLIENT_SECRET || '';
+    const existingRefreshToken = process.env.REFRESH_TOKEN || '';
+
+    // Step 1: Reuse existing client or register a new one
+    let clientData: OAuthClientResponse;
+
+    if (existingClientId && existingClientSecret) {
+      logger.info(`Existing OAuth client found: ${existingClientId.substring(0, 8)}...`);
+      logger.info('Reusing existing CLIENT_ID and CLIENT_SECRET (not re-registering).');
+      clientData = { client_id: existingClientId, client_secret: existingClientSecret };
+
+      // Step 1b: Check if refresh token is still valid
+      if (existingRefreshToken) {
+        logger.info('Checking if existing refresh token is still valid...');
+        const isValid = await this.testRefreshToken(clientData, existingRefreshToken);
+        if (isValid) {
+          logger.info('\n=== Already authenticated ===');
+          logger.info('Your existing credentials are valid. No action needed.');
+          logger.info('If you need to force re-auth, clear REFRESH_TOKEN from .env and run again.');
+          return;
+        }
+        logger.warn('Existing refresh token is expired or invalid. Re-authorizing...');
+      }
+    } else {
+      // No existing client — register a new one
+      logger.info(`Registering OAuth client: "${this.integrationName}"...`);
+      clientData = await this.registerClient();
+      logger.info(`Client registered. CLIENT_ID: ${clientData.client_id.substring(0, 8)}...`);
+    }
 
     // Step 2: Generate auth URL
     const state = this.generateState();
@@ -88,6 +114,45 @@ class OAuthSetup {
     logger.info('CLIENT_ID, CLIENT_SECRET, and REFRESH_TOKEN have been written to .env');
     logger.info('You can now run: npm run setup (to discover pipeline/stage IDs)');
     logger.info('Then: npm start (webhook mode) or npm run poll (polling mode)');
+  }
+
+  /**
+   * Test if a refresh token is still valid by attempting a token refresh.
+   */
+  private async testRefreshToken(
+    clientData: OAuthClientResponse,
+    refreshToken: string
+  ): Promise<boolean> {
+    try {
+      const params = new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: clientData.client_id,
+        client_secret: clientData.client_secret,
+        refresh_token: refreshToken,
+      });
+
+      const res = await fetch(`${this.baseUrl}/api/oauth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as TokenResponse;
+        // If Day.ai rotated the refresh token, save the new one
+        if (data.refresh_token && data.refresh_token !== refreshToken) {
+          logger.info('Day.ai issued a new refresh token — updating .env...');
+          this.updateEnvFile(clientData, data);
+        }
+        return true;
+      }
+
+      logger.debug(`Refresh token test returned ${res.status}`);
+      return false;
+    } catch (err) {
+      logger.debug('Refresh token test failed with error', err);
+      return false;
+    }
   }
 
   private async registerClient(): Promise<OAuthClientResponse> {
